@@ -1,0 +1,424 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>To-Do Tracker with Progress Graph</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #fefefe;
+      padding: 20px;
+      max-width: 800px;
+      margin: auto;
+    }
+    h1 {
+      text-align: center;
+      color: #555;
+    }
+    .todo-container {
+      background-color: #ffe6f0;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+    }
+    .todo-input-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+input[type="text"] {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+button {
+  padding: 10px 20px;
+  border: none;
+  background-color: #a0e7a0;
+  color: white;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+    button:hover {
+      background-color: #78d878;
+    }
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+    li {
+  padding: 10px;
+  margin-bottom: 5px;
+  background-color: #f0fff0;
+  border-radius: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+    .done {
+      text-decoration: line-through;
+      color: gray;
+    }
+    .graph-container {
+      background-color: #e6ffe6;
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+ .options-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #e91e63; /* Pink */
+  transition: color 0.2s ease, background-color 0.2s ease;
+  padding: 4px;            /* Small padding */
+  border-radius: 4px;      /* Rounded corners */
+}
+
+.options-btn:hover {
+  color: #ffffff;          /* White on hover */
+  background-color: #e91e63; /* Pink background */
+}
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  background-color: #ffe6f0;
+  min-width: 100px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  z-index: 1;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.dropdown-content button {
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #e91e63;
+  cursor: pointer;
+}
+
+.dropdown-content button:hover {
+  background-color: #fdd7e4;
+  color: #000;
+}
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.modal-content {
+  background-color: #fff0f5;
+  padding: 20px;
+  border-radius: 10px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+  position: relative;
+}
+
+.close-btn {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 24px;
+  color: #e91e63;
+  cursor: pointer;
+}
+
+#statsText {
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 14px;
+  color: #444;
+}
+/* Style for all checkboxes */
+input[type="checkbox"] {
+  accent-color: #e91e63; /* Theme color */
+}
+.edit-input {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 4px;
+  width: 100%;
+  font-size: 16px;
+}
+
+  </style>
+</head>
+<body>
+  <h1>To-Do Tracker 🌸</h1>
+  <div class="todo-container">
+    <div class="todo-input-group">
+  <input type="text" id="todo-input" placeholder="Add a new task...">
+  <button onclick="addTodo()">Add</button>
+</div>
+
+    <ul id="todo-list"></ul>
+  </div>  <div class="graph-container">
+    <canvas id="progressChart"></canvas>
+  </div>  <script>
+    let todos = JSON.parse(localStorage.getItem('todos')) || [];
+    let progressData = JSON.parse(localStorage.getItem('progressData')) || [];
+    const todoList = document.getElementById('todo-list');
+    const chartCtx = document.getElementById('progressChart').getContext('2d');
+    
+    function saveData() {
+      localStorage.setItem('todos', JSON.stringify(todos));
+      localStorage.setItem('progressData', JSON.stringify(progressData));
+    }
+ 
+    function addTodo() {
+      const input = document.getElementById('todo-input');
+      const text = input.value.trim();
+      if (text === '') return;
+ 
+      const todo = { text, completed: false, id: Date.now() };
+      todos.push(todo);
+      progressData.push({ id: todo.id, dates: [] });
+      saveData();
+      renderTodos();
+      input.value = '';
+    }
+ 
+    function toggleDone(id) {
+      const todo = todos.find(t => t.id === id);
+      todo.completed = !todo.completed;
+ 
+      const today = new Date().toISOString().slice(0, 10);
+      const data = progressData.find(d => d.id === id);
+ 
+      const index = data.dates.findIndex(d => d.date === today);
+      if (index !== -1) {
+        data.dates[index].done = todo.completed;
+      } else {
+        data.dates.push({ date: today, done: todo.completed });
+      }
+      saveData();
+      renderTodos();
+      updateChart();
+    }
+ 
+    function renderTodos() {
+  todoList.innerHTML = '';
+ [...todos]
+  .sort((a, b) => a.completed - b.completed)
+  .forEach(todo => {
+
+    const li = document.createElement('li');
+
+    // Create left side: checkbox + text
+    const leftContainer = document.createElement('div');
+    leftContainer.style.display = 'flex';
+    leftContainer.style.alignItems = 'center';
+    leftContainer.style.gap = '10px';
+    leftContainer.style.flex = '1';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = todo.completed;
+    checkbox.onclick = () => toggleDone(todo.id);
+
+    const span = document.createElement('span');
+span.textContent = todo.text;
+span.style.cursor = 'pointer';
+
+if (todo.completed) span.classList.add('done');
+
+// Make the item editable on click
+// Make the item editable on click
+span.addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = todo.text;
+  input.className = 'edit-input';
+  input.style.flex = '1';
+  input.style.fontSize = '16px';
+  input.style.padding = '2px';
+
+  span.replaceWith(input);
+  input.focus();
+
+  const saveEdit = () => {
+    const newText = input.value.trim();
+    if (newText !== '') {
+      todo.text = newText;
+      saveData();
+    }
+    renderTodos(); // Re-render regardless
+    document.removeEventListener('click', handleOutsideClick);
+  };
+
+  const handleOutsideClick = (e) => {
+    if (e.target !== input) saveEdit();
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveEdit();
+  });
+
+  input.addEventListener('blur', saveEdit);
+
+  // Delay attaching the outside click to avoid immediate trigger
+  setTimeout(() => {
+    document.addEventListener('click', handleOutsideClick);
+  }, 0);
+});
+
+
+
+    leftContainer.appendChild(checkbox);
+    leftContainer.appendChild(span);
+
+    // Create dropdown menu
+    const dropdown = document.createElement('div');
+    dropdown.className = 'dropdown';
+
+    const optionsBtn = document.createElement('button');
+    optionsBtn.className = 'options-btn';
+    optionsBtn.textContent = '⋮';
+    optionsBtn.onclick = (e) => {
+      e.stopPropagation();
+      dropdownContent.style.display = dropdownContent.style.display === 'block' ? 'none' : 'block';
+    };
+
+    const dropdownContent = document.createElement('div');
+    dropdownContent.className = 'dropdown-content';
+
+    const statsBtn = document.createElement('button');
+    statsBtn.textContent = 'View Stats';
+    statsBtn.onclick = () => {
+      openStatsModal(getTodoStats(todo.id));
+      dropdownContent.style.display = 'none';
+    };
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.onclick = () => {
+      todos = todos.filter(t => t.id !== todo.id);
+      progressData = progressData.filter(d => d.id !== todo.id);
+      saveData();
+      renderTodos();
+      updateChart();
+    };
+
+    dropdownContent.appendChild(statsBtn);
+    dropdownContent.appendChild(deleteBtn);
+    dropdown.appendChild(optionsBtn);
+    dropdown.appendChild(dropdownContent);
+
+    // Build final list item
+    li.appendChild(leftContainer);
+    li.appendChild(dropdown);
+    todoList.appendChild(li);
+  });
+}
+    function getTodoStats(id) {
+      const data = progressData.find(d => d.id === id);
+      const completedDays = data.dates.filter(d => d.done).map(d => d.date);
+      const missedDays = data.dates.filter(d => !d.done).map(d => d.date);
+      return `✓ Done Days: ${completedDays.join(', ')}\n✗ Missed Days: ${missedDays.join(', ')}`;
+    }
+ 
+    function updateChart() {
+      const today = new Date();
+      const last7 = [...Array(7)].map((_, i) => {
+        const d = new Date(today);
+        d.setDate(today.getDate() - (6 - i));
+        return d.toISOString().slice(0, 10);
+      });
+ 
+      const doneCounts = last7.map(day => {
+        return progressData.reduce((count, task) => {
+          const found = task.dates.find(d => d.date === day);
+          return count + (found && found.done ? 1 : 0);
+        }, 0);
+      });
+ 
+      if (window.myChart) window.myChart.destroy();
+ 
+      window.myChart = new Chart(chartCtx, {
+        type: 'line',
+        data: {
+          labels: last7,
+          datasets: [{
+            label: 'Completed Tasks',
+            data: doneCounts,
+            borderColor: '#66cc66',
+            backgroundColor: '#ccffcc',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          }
+        }
+      });
+    }
+ document.addEventListener('click', () => {
+  document.querySelectorAll('.dropdown-content').forEach(menu => menu.style.display = 'none');
+});
+
+function openStatsModal(text) {
+  document.getElementById('statsText').textContent = text;
+  document.getElementById('statsModal').style.display = 'flex';
+}
+
+function closeStatsModal() {
+  document.getElementById('statsModal').style.display = 'none';
+}
+const inputField = document.getElementById("todo-input");
+
+  inputField.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      addTodo();
+    }
+  });
+    // Initial render
+    renderTodos();
+    updateChart();
+  </script>
+<div id="statsModal" style="display: none;" class="modal-overlay">
+  <div class="modal-content">
+    <span class="close-btn" onclick="closeStatsModal()">&times;</span>
+    <h3>Task Progress Stats</h3>
+    <pre id="statsText"></pre>
+  </div>
+</div>
+ 
+</body>
+</html>
+ 
